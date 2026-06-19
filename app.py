@@ -253,8 +253,8 @@ if uploaded_file:
     with st.spinner("Generating SKS invoice PDF..."):
         try:
             pdf_bytes = generate_sks_pdf(data)
-            invoice_num = data.get("invoice_number", "invoice")
-            filename = f"SKS_Invoice_{invoice_num}.pdf"
+            original_name = os.path.splitext(uploaded_file.name)[0]
+            filename = f"{original_name}_v_SKS.pdf"
 
             st.download_button(
                 label="⬇️ Download SKS Invoice PDF",
