@@ -6,6 +6,7 @@ import re
 import io
 import os
 import base64
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.units import inch
@@ -51,15 +52,19 @@ Return this exact structure:
   "subtotal": "68,314.62",
   "tax": "0.00",
   "total": "68,314.62",
+  "payment": "",
   "balance_due": "$68,314.62"
 }}
+
+"payment" is the PAYMENT amount shown below TOTAL (partial payment already applied), e.g. "4,969.70".
+Use "" if the invoice shows no payment line. "balance_due" is the BALANCE DUE shown on the invoice (after any payment).
 
 Invoice text:
 {text}"""
 
     message = client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1000,
+        max_tokens=1500,
         messages=[{"role": "user", "content": prompt}]
     )
     raw = message.content[0].text.strip()
@@ -127,7 +132,7 @@ def generate_sks_pdf(data):
     bill_to = data.get("bill_to", {})
     bill_block = [
         Paragraph("BILL TO", label_style),
-        Paragraph(bill_to.get("name", ""), value_style),
+        Paragraph(escape(bill_to.get("name", "")), value_style),
         Paragraph(bill_to.get("address_line1", ""), value_style),
         Paragraph(bill_to.get("address_line2", ""), value_style),
     ]
@@ -174,7 +179,7 @@ def generate_sks_pdf(data):
     for item in data.get("line_items", []):
         table_data.append([
             Paragraph("", line_desc_style),
-            Paragraph(item.get("description", ""), line_desc_style),
+            Paragraph(escape(item.get("description", "")), line_desc_style),
             Paragraph(item.get("amount", ""), line_amt_style),
         ])
 
@@ -194,10 +199,15 @@ def generate_sks_pdf(data):
     # --- TOTALS ---
     subtotal_label = data.get("subtotal_label", "")
     totals_data = [
-        [Paragraph(subtotal_label, value_style), Paragraph("SUBTOTAL", detail_label_style), Paragraph(data.get("subtotal", ""), line_amt_style)],
+        [Paragraph(escape(subtotal_label), value_style), Paragraph("SUBTOTAL", detail_label_style), Paragraph(data.get("subtotal", ""), line_amt_style)],
         [Paragraph("", value_style), Paragraph("TAX", detail_label_style), Paragraph(data.get("tax", ""), line_amt_style)],
         [Paragraph("", value_style), Paragraph("TOTAL", detail_label_style), Paragraph(data.get("total", ""), line_amt_style)],
     ]
+    payment = (data.get("payment") or "").strip()
+    if payment and payment.replace("$", "").replace(",", "").strip() not in ("0", "0.00", "-"):
+        totals_data.append(
+            [Paragraph("", value_style), Paragraph("PAYMENT", detail_label_style), Paragraph(payment, line_amt_style)]
+        )
     totals_table = Table(totals_data, colWidths=[3*inch, 1.75*inch, 2*inch])
     totals_table.setStyle(TableStyle([
         ('LEFTPADDING', (0,0), (-1,-1), 6),
